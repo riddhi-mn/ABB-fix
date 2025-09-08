@@ -347,8 +347,8 @@ async def predict(request: PredictionRequest):
         prediction_proba = trained_model.predict_proba(features)[0]
         prediction_class = trained_model.predict(features)[0]
         
-        # Calculate confidence
-        confidence = max(prediction_proba) * 100
+        # Calculate confidence and ensure it's between 0-100
+        confidence = min(100, max(0, max(prediction_proba) * 100))
         
         # Log prediction details for debugging
         logger.info(f"Prediction for temp={request.temperature:.2f}, pressure={request.pressure:.2f}, humidity={request.humidity:.2f}")

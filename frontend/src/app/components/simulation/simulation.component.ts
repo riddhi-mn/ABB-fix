@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, OnInit, OnDestroy, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { interval, Subscription } from 'rxjs';
@@ -6,6 +6,7 @@ import { ApiService } from '../../services/api.service';
 import { SimulationData, SimulationStats } from '../../models/dataset-metadata.model';
 import { StepIndicatorComponent } from '../shared/step-indicator/step-indicator.component';
 import { NavigationComponent } from '../shared/navigation/navigation.component';
+import { Chart, ChartConfiguration, ChartData, ChartType, registerables } from 'chart.js';
 
 @Component({
   selector: 'app-simulation',
@@ -122,7 +123,7 @@ import { NavigationComponent } from '../shared/navigation/navigation.component';
                     <div class="chart-card">
                       <h5 class="mb-3">
                         <i class="fas fa-chart-line me-2"></i>
-                        Real-Time Quality Predictions
+                        Real-Time Prediction Confidence
                       </h5>
                       <div class="chart-container">
                         <canvas #qualityChart></canvas>
@@ -412,6 +413,9 @@ import { NavigationComponent } from '../shared/navigation/navigation.component';
   `]
 })
 export class SimulationComponent implements OnInit, OnDestroy {
+  @ViewChild('qualityChart', { static: false }) qualityChartRef!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('confidenceChart', { static: false }) confidenceChartRef!: ElementRef<HTMLCanvasElement>;
+
   isSimulating = false;
   isComplete = false;
   simulationSubscription: Subscription | null = null;
@@ -426,6 +430,9 @@ export class SimulationComponent implements OnInit, OnDestroy {
 
   private maxRecentPredictions = 10;
   private simulationOffset = 0;
+  private qualityChart: Chart | null = null;
+  private confidenceChart: Chart | null = null;
+  private chartData: { time: string, quality: number }[] = [];
 
   constructor(
     private apiService: ApiService,
@@ -434,11 +441,18 @@ export class SimulationComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.apiService.setCurrentStep(4);
+    Chart.register(...registerables);
   }
 
   ngOnDestroy(): void {
     if (this.simulationSubscription) {
       this.simulationSubscription.unsubscribe();
+    }
+    if (this.qualityChart) {
+      this.qualityChart.destroy();
+    }
+    if (this.confidenceChart) {
+      this.confidenceChart.destroy();
     }
   }
 
@@ -473,6 +487,10 @@ export class SimulationComponent implements OnInit, OnDestroy {
     this.apiService.startSimulation(simulationStart, simulationEnd).subscribe({
       next: (response) => {
         console.log('Simulation started:', response);
+        // Initialize charts after a short delay to ensure DOM is ready
+        setTimeout(() => {
+          this.initializeCharts();
+        }, 100);
         this.startStreaming(simulationStart, simulationEnd);
       },
       error: (error) => {
@@ -505,6 +523,9 @@ export class SimulationComponent implements OnInit, OnDestroy {
             this.stats.failCount++;
           }
           this.stats.averageConfidence = (this.stats.averageConfidence + prediction.confidence) / 2;
+
+          // Update charts with new prediction
+          this.updateCharts(prediction);
 
           this.simulationOffset++;
         },
@@ -547,12 +568,126 @@ export class SimulationComponent implements OnInit, OnDestroy {
 
   getConfidencePercentage(confidence: number): number {
     // Ensure confidence is between 0-100
-    // Handle cases where ML service returns raw values instead of percentages
-    if (confidence > 100) {
-      // If it's a huge number, it might be a raw probability
-      // Convert it to percentage and clamp to 100
-      return Math.min(100, Math.max(0, confidence / 1000000000000)); // Scale down huge numbers
+    // ML service should now return proper percentages, but add safety check
+    if (confidence > 100 || confidence < 0) {
+      console.error('Invalid confidence value from ML service:', confidence);
+      return 0; // Fallback to 0% for invalid values
     }
     return Math.min(100, Math.max(0, confidence)); // Clamp to 0-100 range
+  }
+
+  private initializeCharts(): void {
+    this.initializeQualityChart();
+    this.initializeConfidenceChart();
+  }
+
+  private initializeQualityChart(): void {
+    if (!this.qualityChartRef) return;
+
+    const ctx = this.qualityChartRef.nativeElement.getContext('2d');
+    if (!ctx) return;
+
+    this.qualityChart = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Prediction Confidence',
+          data: [],
+          borderColor: '#007bff',
+          backgroundColor: 'rgba(0, 123, 255, 0.1)',
+          borderWidth: 2,
+          fill: true,
+          tension: 0.4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          y: {
+            beginAtZero: true,
+            max: 100,
+            title: {
+              display: true,
+              text: 'Confidence (%)'
+            }
+          },
+          x: {
+            title: {
+              display: true,
+              text: 'Time'
+            }
+          }
+        },
+        plugins: {
+          legend: {
+            display: true
+          }
+        }
+      }
+    });
+  }
+
+  private initializeConfidenceChart(): void {
+    if (!this.confidenceChartRef) return;
+
+    const ctx = this.confidenceChartRef.nativeElement.getContext('2d');
+    if (!ctx) return;
+
+    this.confidenceChart = new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        labels: ['Pass', 'Fail'],
+        datasets: [{
+          data: [0, 0],
+          backgroundColor: ['#28a745', '#dc3545'],
+          borderWidth: 2,
+          borderColor: '#fff'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom'
+          }
+        }
+      }
+    });
+  }
+
+  private updateCharts(prediction: SimulationData): void {
+    this.updateQualityChart(prediction);
+    this.updateConfidenceChart();
+  }
+
+  private updateQualityChart(prediction: SimulationData): void {
+    if (!this.qualityChart) return;
+
+    const time = new Date(prediction.timestamp).toLocaleTimeString();
+    // Use actual confidence value instead of binary 0/100
+    const quality = this.getConfidencePercentage(prediction.confidence);
+
+    // Add new data point
+    this.chartData.push({ time, quality });
+
+    // Keep only last 20 data points
+    if (this.chartData.length > 20) {
+      this.chartData.shift();
+    }
+
+    // Update chart
+    this.qualityChart.data.labels = this.chartData.map(d => d.time);
+    this.qualityChart.data.datasets[0].data = this.chartData.map(d => d.quality);
+    this.qualityChart.update('none');
+  }
+
+  private updateConfidenceChart(): void {
+    if (!this.confidenceChart) return;
+
+    this.confidenceChart.data.datasets[0].data = [this.stats.passCount, this.stats.failCount];
+    this.confidenceChart.update('none');
   }
 }
