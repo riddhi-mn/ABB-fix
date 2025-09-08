@@ -19,6 +19,10 @@ export class ApiService {
   private readonly baseUrl = 'http://localhost:5000/api';
   private currentStepSubject = new BehaviorSubject<number>(1);
   public currentStep$ = this.currentStepSubject.asObservable();
+  
+  // Store selected date ranges
+  private selectedDateRangesSubject = new BehaviorSubject<DateRangeRequest | null>(null);
+  public selectedDateRanges$ = this.selectedDateRangesSubject.asObservable();
 
   constructor(private http: HttpClient) {}
 
@@ -28,6 +32,15 @@ export class ApiService {
 
   getCurrentStep(): number {
     return this.currentStepSubject.value;
+  }
+
+  // Date range management methods
+  setSelectedDateRanges(dateRanges: DateRangeRequest): void {
+    this.selectedDateRangesSubject.next(dateRanges);
+  }
+
+  getSelectedDateRanges(): DateRangeRequest | null {
+    return this.selectedDateRangesSubject.value;
   }
 
   // Dataset endpoints

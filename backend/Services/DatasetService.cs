@@ -54,7 +54,10 @@ public class DatasetService : IDatasetService
 
             int totalRecords = 0;
             int passCount = 0;
-            var additionalFeatures = new Dictionary<string, object>();
+            
+            // Log dataset structure for debugging
+            _logger.LogInformation($"Dataset headers: {string.Join(", ", headers)}");
+            _logger.LogInformation($"Total columns detected: {headers.Length}");
 
             while (await csv.ReadAsync())
             {
@@ -64,36 +67,40 @@ public class DatasetService : IDatasetService
                     Response = csv.GetField<int>("Response")
                 };
 
-                // Extract common sensor features if available
-                if (headers.Contains("Temperature"))
-                    record.Temperature = csv.GetField<double>("Temperature");
-                else
-                    record.Temperature = Random.Shared.NextDouble() * 50 + 20; // 20-70°C
-
-                if (headers.Contains("Pressure"))
-                    record.Pressure = csv.GetField<double>("Pressure");
-                else
-                    record.Pressure = Random.Shared.NextDouble() * 200 + 800; // 800-1000 hPa
-
-                if (headers.Contains("Humidity"))
-                    record.Humidity = csv.GetField<double>("Humidity");
-                else
-                    record.Humidity = Random.Shared.NextDouble() * 60 + 20; // 20-80%
-
-                // Store additional features as JSON
+                // Store ALL features as JSON (except Response and timestamp)
+                var allFeatures = new Dictionary<string, object>();
                 foreach (var header in headers)
                 {
-                    if (!new[] { "Response", "Temperature", "Pressure", "Humidity" }.Contains(header))
+                    if (header != "Response") // Skip only the Response column
                     {
                         var value = csv.GetField(header);
+                        
+                        // Try to parse as number first, then as string
                         if (double.TryParse(value, out var numValue))
-                            additionalFeatures[header] = numValue;
-                        else
-                            additionalFeatures[header] = value;
+                        {
+                            allFeatures[header] = numValue;
+                        }
+                        else if (value != null && value.Trim() != "")
+                        {
+                            allFeatures[header] = value;
+                        }
+                        // Skip null/empty values
                     }
                 }
 
-                record.AdditionalFeatures = JsonSerializer.Serialize(additionalFeatures);
+                // Log feature count for debugging
+                if (totalRecords == 0)
+                {
+                    _logger.LogInformation($"First record features: {allFeatures.Count} features stored");
+                    _logger.LogInformation($"Sample feature names: {string.Join(", ", allFeatures.Keys.Take(10))}");
+                }
+
+                record.AdditionalFeatures = JsonSerializer.Serialize(allFeatures);
+                
+                // Set default values for backward compatibility (these won't be used in training)
+                record.Temperature = 0; // Placeholder
+                record.Pressure = 0;    // Placeholder  
+                record.Humidity = 0;    // Placeholder
                 records.Add(record);
 
                 totalRecords++;

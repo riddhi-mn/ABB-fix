@@ -1,7 +1,7 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -38,11 +38,14 @@ trained_model = None
 model_metrics = {}
 feature_columns = []
 
+class TrainingDataRecord(BaseModel):
+    timestamp: str
+    response: int
+    features: Optional[str] = None  # JSON string containing all features
+
 class TrainingRequest(BaseModel):
-    trainStart: str
-    trainEnd: str
-    testStart: str
-    testEnd: str
+    trainingData: List[TrainingDataRecord]
+    testingData: List[TrainingDataRecord]
 
 class PredictionRequest(BaseModel):
     timestamp: str
@@ -70,43 +73,62 @@ class PredictionResponse(BaseModel):
     pressure: float
     humidity: float
 
-def generate_synthetic_data(start_date: str, end_date: str, num_records: int) -> pd.DataFrame:
-    """Generate synthetic sensor data for demonstration"""
-    np.random.seed(42)
+def convert_to_dataframe(records: List[TrainingDataRecord]) -> pd.DataFrame:
+    """Convert real training data records to DataFrame with dynamic features"""
+    data = []
+    all_feature_names = set()
     
-    # Create date range
-    start = pd.to_datetime(start_date)
-    end = pd.to_datetime(end_date)
-    dates = pd.date_range(start=start, end=end, periods=num_records)
+    logger.info(f"Converting {len(records)} records to DataFrame")
     
-    # Generate synthetic features
-    data = {
-        'timestamp': dates,
-        'temperature': np.random.normal(45, 10, num_records),  # 20-70°C
-        'pressure': np.random.normal(900, 50, num_records),    # 800-1000 hPa
-        'humidity': np.random.normal(50, 15, num_records),     # 20-80%
-        'vibration': np.random.normal(5, 2, num_records),      # 0-10 scale
-        'current': np.random.normal(10, 3, num_records),       # 5-15 Amps
-        'voltage': np.random.normal(220, 20, num_records),     # 200-240V
-    }
+    # First pass: collect all unique feature names
+    for record in records:
+        if record.features:
+            try:
+                features = json.loads(record.features)
+                all_feature_names.update(features.keys())
+            except Exception as e:
+                logger.warning(f"Failed to parse features for record: {e}")
     
-    # Create response based on feature combinations (simplified logic)
-    response = []
-    for i in range(num_records):
-        temp_ok = 20 <= data['temperature'][i] <= 70
-        pressure_ok = 800 <= data['pressure'][i] <= 1000
-        humidity_ok = 20 <= data['humidity'][i] <= 80
-        vibration_ok = data['vibration'][i] <= 8
-        current_ok = 5 <= data['current'][i] <= 15
-        voltage_ok = 200 <= data['voltage'][i] <= 240
+    logger.info(f"Detected {len(all_feature_names)} unique features")
+    logger.info(f"Sample feature names: {list(all_feature_names)[:10]}")
+    
+    # Second pass: build DataFrame with all features
+    for i, record in enumerate(records):
+        row_data = {
+            'timestamp': record.timestamp,
+            'response': record.response
+        }
         
-        # Pass if most conditions are met
-        conditions_met = sum([temp_ok, pressure_ok, humidity_ok, vibration_ok, current_ok, voltage_ok])
-        response.append(1 if conditions_met >= 4 else 0)
+        # Initialize all features with NaN
+        for feature_name in all_feature_names:
+            row_data[feature_name] = np.nan
+        
+        # Fill in actual feature values
+        if record.features:
+            try:
+                features = json.loads(record.features)
+                for feature_name, value in features.items():
+                    if isinstance(value, (int, float)):
+                        row_data[feature_name] = value
+                    elif isinstance(value, str) and value.strip():
+                        # Try to convert string to number
+                        try:
+                            row_data[feature_name] = float(value)
+                        except ValueError:
+                            # Keep as string if can't convert
+                            row_data[feature_name] = value
+            except Exception as e:
+                logger.warning(f"Failed to parse features for record {i}: {e}")
+        
+        data.append(row_data)
     
-    data['response'] = response
+    df = pd.DataFrame(data)
     
-    return pd.DataFrame(data)
+    # Log DataFrame info
+    logger.info(f"DataFrame shape: {df.shape}")
+    logger.info(f"Features with data: {df.drop(['timestamp', 'response'], axis=1).count().sum()}")
+    
+    return df
 
 def create_training_chart(history: Dict[str, list]) -> str:
     """Create training progress chart"""
@@ -171,29 +193,55 @@ async def health_check():
 
 @app.post("/train", response_model=TrainingResponse)
 async def train_model(request: TrainingRequest):
-    """Train ML model with specified date ranges"""
+    """Train ML model with real user data"""
     try:
-        logger.info(f"Training model with date ranges: {request.trainStart} to {request.trainEnd}")
+        logger.info(f"Training model with {len(request.trainingData)} training records and {len(request.testingData)} testing records")
         
-        # Generate synthetic training data
-        train_data = generate_synthetic_data(request.trainStart, request.trainEnd, 1000)
-        test_data = generate_synthetic_data(request.testStart, request.testEnd, 300)
+        # Convert real data to DataFrame
+        train_data = convert_to_dataframe(request.trainingData)
+        test_data = convert_to_dataframe(request.testingData)
         
-        # Prepare features and target
-        feature_cols = ['temperature', 'pressure', 'humidity', 'vibration', 'current', 'voltage']
+        if train_data.empty or test_data.empty:
+            raise ValueError("No training or testing data provided")
+        
+        # Ensure both datasets have the same feature columns
+        train_features = set([col for col in train_data.columns if col not in ['timestamp', 'response']])
+        test_features = set([col for col in test_data.columns if col not in ['timestamp', 'response']])
+        
+        # Use intersection of features (features present in both datasets)
+        common_features = train_features.intersection(test_features)
+        
+        if not common_features:
+            raise ValueError("No common features found between training and testing data")
+        
+        # Convert to sorted list for consistent ordering
+        feature_cols = sorted(list(common_features))
         global feature_columns
         feature_columns = feature_cols
         
-        X_train = train_data[feature_cols]
+        logger.info(f"Training dataset features: {len(train_features)}")
+        logger.info(f"Testing dataset features: {len(test_features)}")
+        logger.info(f"Common features: {len(feature_cols)}")
+        logger.info(f"Feature columns: {feature_cols[:10]}...")  # Show first 10 features
+        
+        # Handle missing values and ensure consistent columns
+        X_train = train_data[feature_cols].fillna(0)  # Fill NaN with 0
         y_train = train_data['response']
-        X_test = test_data[feature_cols]
+        X_test = test_data[feature_cols].fillna(0)    # Fill NaN with 0
         y_test = test_data['response']
         
-        # Train XGBoost model
+        logger.info(f"Training data shape: X_train={X_train.shape}, y_train={y_train.shape}")
+        logger.info(f"Testing data shape: X_test={X_test.shape}, y_test={y_test.shape}")
+        
+        # Train XGBoost model with better parameters to reduce overfitting
         model = xgb.XGBClassifier(
-            n_estimators=100,
-            max_depth=6,
-            learning_rate=0.1,
+            n_estimators=150,
+            max_depth=4,  # Reduced depth to prevent overfitting
+            learning_rate=0.05,  # Lower learning rate for better generalization
+            subsample=0.8,  # Add subsampling
+            colsample_bytree=0.8,  # Add feature subsampling
+            reg_alpha=0.1,  # L1 regularization
+            reg_lambda=0.1,  # L2 regularization
             random_state=42
         )
         
@@ -268,24 +316,32 @@ async def predict(request: PredictionRequest):
         if trained_model is None:
             raise HTTPException(status_code=400, detail="No trained model available")
         
-        # Prepare features
-        features = np.array([[request.temperature, request.pressure, request.humidity]])
+        # Prepare features using the same feature columns as training
+        if not feature_columns:
+            raise HTTPException(status_code=400, detail="No trained model available - feature columns not set")
         
-        # Add additional features if available
-        if request.additionalFeatures:
-            try:
-                additional = json.loads(request.additionalFeatures)
-                # Add default values for missing features
-                vibration = additional.get('vibration', np.random.normal(5, 2))
-                current = additional.get('current', np.random.normal(10, 3))
-                voltage = additional.get('voltage', np.random.normal(220, 20))
-                features = np.array([[request.temperature, request.pressure, request.humidity, vibration, current, voltage]])
-            except:
-                # Fallback to default values
-                features = np.array([[request.temperature, request.pressure, request.humidity, 5, 10, 220]])
-        else:
-            # Use default values for missing features
-            features = np.array([[request.temperature, request.pressure, request.humidity, 5, 10, 220]])
+        # Create feature vector with same order as training
+        feature_vector = []
+        for feature_name in feature_columns:
+            if request.additionalFeatures:
+                try:
+                    additional = json.loads(request.additionalFeatures)
+                    value = additional.get(feature_name, 0.0)  # Default to 0 if not found
+                    if isinstance(value, str):
+                        try:
+                            value = float(value)
+                        except ValueError:
+                            value = 0.0
+                    feature_vector.append(value)
+                except:
+                    feature_vector.append(0.0)
+            else:
+                feature_vector.append(0.0)
+        
+        features = np.array([feature_vector])
+        
+        logger.info(f"Prediction features shape: {features.shape}")
+        logger.info(f"Sample feature values: {features[0][:5]}...")  # Show first 5 features
         
         # Make prediction
         prediction_proba = trained_model.predict_proba(features)[0]
@@ -293,6 +349,11 @@ async def predict(request: PredictionRequest):
         
         # Calculate confidence
         confidence = max(prediction_proba) * 100
+        
+        # Log prediction details for debugging
+        logger.info(f"Prediction for temp={request.temperature:.2f}, pressure={request.pressure:.2f}, humidity={request.humidity:.2f}")
+        logger.info(f"Features used: {features[0]}")
+        logger.info(f"Prediction: {prediction_class}, Confidence: {confidence:.2f}%")
         
         return PredictionResponse(
             timestamp=request.timestamp,

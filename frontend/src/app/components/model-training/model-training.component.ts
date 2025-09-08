@@ -443,12 +443,30 @@ export class ModelTrainingComponent implements OnInit {
     this.isTraining = true;
     this.trainingResult = null;
 
-    // Create training request with default date ranges
+    // Get the selected date ranges from the service
+    const selectedDateRanges = this.apiService.getSelectedDateRanges();
+    
+    if (!selectedDateRanges) {
+      this.isTraining = false;
+      this.trainingResult = {
+        success: false,
+        message: 'No date ranges selected. Please go back and configure date ranges.',
+        accuracy: 0,
+        precision: 0,
+        recall: 0,
+        f1Score: 0,
+        confusionMatrix: '',
+        trainingChart: ''
+      };
+      return;
+    }
+
+    // Create training request with user-selected date ranges
     const trainingRequest = {
-      trainStart: '2021-01-01T00:00:00',
-      trainEnd: '2021-06-30T23:59:59',
-      testStart: '2021-07-01T00:00:00',
-      testEnd: '2021-12-31T23:59:59'
+      trainStart: selectedDateRanges.trainingStart + 'T00:00:00',
+      trainEnd: selectedDateRanges.trainingEnd + 'T23:59:59',
+      testStart: selectedDateRanges.testingStart + 'T00:00:00',
+      testEnd: selectedDateRanges.testingEnd + 'T23:59:59'
     };
 
     this.apiService.trainModel(trainingRequest).subscribe({

@@ -576,6 +576,8 @@ export class DateRangesComponent implements OnInit {
   // navigates to training step if data ranges are valid
   proceedToNextStep(): void {
     if (this.validationResult && this.validationResult.isValid) {
+      // Save the selected date ranges to the service before navigating
+      this.apiService.setSelectedDateRanges(this.dateRanges);
       this.router.navigate(['/training']);
     }
   }
