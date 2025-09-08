@@ -119,6 +119,13 @@ import { NavigationComponent } from '../shared/navigation/navigation.component';
                 <div class="text-center">
                   <button 
                     type="button" 
+                    class="btn btn-secondary btn-lg me-3"
+                    (click)="autoPopulateDates()">
+                    <i class="fas fa-magic me-2"></i>
+                    Auto-Populate Dates
+                  </button>
+                  <button 
+                    type="button" 
                     class="btn btn-primary btn-lg"
                     [disabled]="!canValidate() || isValidating"
                     (click)="validateRanges()">
@@ -516,6 +523,19 @@ export class DateRangesComponent implements OnInit {
   }
 
   onDateChange(): void {
+    this.validationResult = null;
+  }
+
+  autoPopulateDates(): void {
+    // Set all date fields to 2021-01-01
+    this.dateRanges.trainingStart = '2021-01-01';
+    this.dateRanges.trainingEnd = '2021-01-01';
+    this.dateRanges.testingStart = '2021-01-01';
+    this.dateRanges.testingEnd = '2021-01-01';
+    this.dateRanges.simulationStart = '2021-01-01';
+    this.dateRanges.simulationEnd = '2021-01-01';
+    
+    // Clear any existing validation result
     this.validationResult = null;
   }
 

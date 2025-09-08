@@ -175,21 +175,25 @@ public class MLService : IMLService
             response.EnsureSuccessStatusCode();
 
             var responseContent = await response.Content.ReadAsStringAsync();
-            var result = JsonSerializer.Deserialize<SimulationData>(responseContent, new JsonSerializerOptions
+            
+            // Parse the JSON response manually to handle timestamp conversion
+            using var document = JsonDocument.Parse(responseContent);
+            var root = document.RootElement;
+            
+            var result = new SimulationData
             {
-                PropertyNameCaseInsensitive = true
-            });
-
-            return result ?? new SimulationData
-            {
-                Timestamp = record.SyntheticTimestamp,
-                SampleId = record.Id.ToString(),
-                Prediction = "Unknown",
-                Confidence = 0.0,
-                Temperature = record.Temperature,
-                Pressure = record.Pressure,
-                Humidity = record.Humidity
+                Timestamp = DateTime.TryParse(root.GetProperty("timestamp").GetString(), out var timestamp) 
+                    ? timestamp 
+                    : record.SyntheticTimestamp,
+                SampleId = root.GetProperty("sampleId").GetString() ?? record.Id.ToString(),
+                Prediction = root.GetProperty("prediction").GetString() ?? "Unknown",
+                Confidence = root.GetProperty("confidence").GetDouble(),
+                Temperature = root.GetProperty("temperature").GetDouble(),
+                Pressure = root.GetProperty("pressure").GetDouble(),
+                Humidity = root.GetProperty("humidity").GetDouble()
             };
+
+            return result;
         }
         catch (Exception ex)
         {

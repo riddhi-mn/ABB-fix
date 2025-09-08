@@ -356,7 +356,7 @@ async def predict(request: PredictionRequest):
         logger.info(f"Prediction: {prediction_class}, Confidence: {confidence:.2f}%")
         
         return PredictionResponse(
-            timestamp=request.timestamp,
+            timestamp=request.timestamp,  # Keep the same format as received
             sampleId=f"sample_{hash(request.timestamp) % 10000}",
             prediction="Pass" if prediction_class == 1 else "Fail",
             confidence=round(confidence, 2),
