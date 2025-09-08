@@ -1,0 +1,42 @@
+
+services:
+  frontend:                         #Frontend service
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile           #Use the Dockerfile inside frontend folder
+    ports:
+      - "4200:80"
+    depends_on:
+      - backend
+    environment:
+      - API_URL=http://backend:5000
+
+  backend:                           #Backend service (API)
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5000:8080"
+    depends_on:
+      - ml-service                  #Ensure ML service starts before backend
+    volumes:
+      - ./backend/data:/app/data
+    environment:
+      - ML_SERVICE_URL=http://ml-service:8000
+      - ConnectionStrings__DefaultConnection=Data Source=/app/data/database.db
+
+  ml-service:                      #Machine Learning service
+    build:
+      context: ./ml-service
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ml-service/data:/app/data
+      - ./ml-service/models:/app/models
+    environment:
+      - PYTHONUNBUFFERED=1               #Ensure logs appear immediately
+
+volumes:
+  data:
+  models:
