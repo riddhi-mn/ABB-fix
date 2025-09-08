@@ -190,7 +190,10 @@ public class MLService : IMLService
                 Confidence = root.GetProperty("confidence").GetDouble(),
                 Temperature = root.GetProperty("temperature").GetDouble(),
                 Pressure = root.GetProperty("pressure").GetDouble(),
-                Humidity = root.GetProperty("humidity").GetDouble()
+                Humidity = root.GetProperty("humidity").GetDouble(),
+                FeatureCount = root.TryGetProperty("featureCount", out var featureCountElement) 
+                    ? featureCountElement.GetInt32() 
+                    : 0
             };
 
             return result;
@@ -206,7 +209,8 @@ public class MLService : IMLService
                 Confidence = 0.0,
                 Temperature = record.Temperature,
                 Pressure = record.Pressure,
-                Humidity = record.Humidity
+                Humidity = record.Humidity,
+                FeatureCount = 0
             };
         }
     }

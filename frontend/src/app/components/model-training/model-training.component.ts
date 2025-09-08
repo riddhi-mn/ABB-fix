@@ -328,10 +328,21 @@ import { NavigationComponent } from '../shared/navigation/navigation.component';
     }
 
     .chart-container img {
+      width: 100%;
       max-width: 100%;
       height: auto;
       border-radius: var(--border-radius);
       box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+
+    .chart-section .chart-container img {
+      max-height: 400px;
+      object-fit: contain;
+    }
+
+    .confusion-matrix-section .chart-container img {
+      max-height: 350px;
+      object-fit: contain;
     }
 
     .model-info-section {
@@ -422,6 +433,14 @@ import { NavigationComponent } from '../shared/navigation/navigation.component';
       
       .metric-value {
         font-size: 2rem;
+      }
+
+      .chart-section .chart-container img {
+        max-height: 300px;
+      }
+
+      .confusion-matrix-section .chart-container img {
+        max-height: 280px;
       }
     }
   `]

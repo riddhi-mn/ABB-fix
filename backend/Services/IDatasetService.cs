@@ -8,4 +8,5 @@ public interface IDatasetService
     Task<DateRangeValidation> ValidateDateRangesAsync(DateRangeRequest request);
     Task<List<DatasetRecord>> GetRecordsByDateRangeAsync(DateTime start, DateTime end);
     Task<SimulationStats> GetSimulationStatsAsync();
+    Task<(DateTime earliest, DateTime latest)> GetDatasetDateRangeAsync();
 }

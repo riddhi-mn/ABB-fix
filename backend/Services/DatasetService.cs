@@ -148,7 +148,7 @@ public class DatasetService : IDatasetService
     {
         try
         {   
-            // Check if dates are within dataset range
+            // Check if dataset exists
             var datasetRange = await _context.DatasetRecords
                 .Select(r => new { r.SyntheticTimestamp })
                 .OrderBy(r => r.SyntheticTimestamp)
@@ -166,6 +166,35 @@ public class DatasetService : IDatasetService
             var earliestDate = await _context.DatasetRecords.MinAsync(r => r.SyntheticTimestamp);
             var latestDate = await _context.DatasetRecords.MaxAsync(r => r.SyntheticTimestamp);
 
+            // 1. Basic date order validation (start <= end for each period)
+            if (request.TrainingStart > request.TrainingEnd)
+            {
+                return new DateRangeValidation
+                {
+                    IsValid = false,
+                    Message = "Training start date must be earlier than or equal to training end date."
+                };
+            }
+
+            if (request.TestingStart > request.TestingEnd)
+            {
+                return new DateRangeValidation
+                {
+                    IsValid = false,
+                    Message = "Testing start date must be earlier than or equal to testing end date."
+                };
+            }
+
+            if (request.SimulationStart > request.SimulationEnd)
+            {
+                return new DateRangeValidation
+                {
+                    IsValid = false,
+                    Message = "Simulation start date must be earlier than or equal to simulation end date."
+                };
+            }
+
+            // 2. Dataset range validation
             if (request.TrainingStart < earliestDate || request.SimulationEnd > latestDate)
             {
                 return new DateRangeValidation
@@ -175,7 +204,36 @@ public class DatasetService : IDatasetService
                 };
             }
 
-            // Count records in each period
+            // 3. Check if all periods are same day (skip sequential validation)
+            bool allSameDay = request.TrainingStart.Date == request.TrainingEnd.Date &&
+                             request.TestingStart.Date == request.TestingEnd.Date &&
+                             request.SimulationStart.Date == request.SimulationEnd.Date;
+
+            // 4. Sequential period validation (only if not all same day)
+            if (!allSameDay)
+            {
+                // Training must end before or on testing start date
+                if (request.TrainingEnd.Date > request.TestingStart.Date)
+                {
+                    return new DateRangeValidation
+                    {
+                        IsValid = false,
+                        Message = "Testing period must begin after the training period ends."
+                    };
+                }
+
+                // Testing must end before or on simulation start date
+                if (request.TestingEnd.Date > request.SimulationStart.Date)
+                {
+                    return new DateRangeValidation
+                    {
+                        IsValid = false,
+                        Message = "Simulation period must begin after the testing period ends."
+                    };
+                }
+            }
+
+            // 5. Count records in each period
             var trainingRecords = await _context.DatasetRecords
                 .CountAsync(r => r.SyntheticTimestamp >= request.TrainingStart && r.SyntheticTimestamp <= request.TrainingEnd);
 
@@ -230,5 +288,12 @@ public class DatasetService : IDatasetService
             AverageConfidence = 85.5, // This would come from actual predictions
             IsComplete = true
         };
+    }
+
+    public async Task<(DateTime earliest, DateTime latest)> GetDatasetDateRangeAsync()
+    {
+        var earliestDate = await _context.DatasetRecords.MinAsync(r => r.SyntheticTimestamp);
+        var latestDate = await _context.DatasetRecords.MaxAsync(r => r.SyntheticTimestamp);
+        return (earliestDate, latestDate);
     }
 }

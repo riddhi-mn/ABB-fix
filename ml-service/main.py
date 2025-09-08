@@ -72,6 +72,7 @@ class PredictionResponse(BaseModel):
     temperature: float
     pressure: float
     humidity: float
+    featureCount: int
 
 def convert_to_dataframe(records: List[TrainingDataRecord]) -> pd.DataFrame:
     """Convert real training data records to DataFrame with dynamic features"""
@@ -362,7 +363,8 @@ async def predict(request: PredictionRequest):
             confidence=round(confidence, 2),
             temperature=request.temperature,
             pressure=request.pressure,
-            humidity=request.humidity
+            humidity=request.humidity,
+            featureCount=len(feature_columns)
         )
         
     except Exception as e:

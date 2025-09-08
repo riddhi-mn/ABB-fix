@@ -25,6 +25,18 @@ import { NavigationComponent } from '../shared/navigation/navigation.component';
                 Configure Date Ranges
               </h3>
               <p class="mb-0 mt-2">Define training, testing, and simulation periods for your model</p>
+              
+              <!-- Dataset Date Range Info -->
+              <div class="dataset-range-info mt-3" *ngIf="datasetDateRange">
+                <div class="alert alert-info mb-0">
+                  <i class="fas fa-info-circle me-2"></i>
+                  <strong>Available Date Range:</strong> 
+                  {{ datasetDateRange.earliest }} to {{ datasetDateRange.latest }}
+                  <small class="d-block mt-1 text-muted">
+                    All selected dates must fall within this range
+                  </small>
+                </div>
+              </div>
             </div>
             <div class="card-body">
               <!-- Date Range Cards -->
@@ -465,6 +477,16 @@ import { NavigationComponent } from '../shared/navigation/navigation.component';
       color: #721c24;
     }
 
+    .alert-info {
+      background: linear-gradient(135deg, #d1ecf1, #bee5eb);
+      color: #0c5460;
+      border: 1px solid #b8daff;
+    }
+
+    .dataset-range-info {
+      animation: slideIn 0.3s ease-out;
+    }
+
     @media (max-width: 768px) {
       .period-content {
         padding: 15px;
@@ -493,6 +515,7 @@ export class DateRangesComponent implements OnInit {
 
   validationResult: DateRangeValidation | null = null;
   isValidating = false;
+  datasetDateRange: { earliest: string; latest: string } | null = null;
 
   constructor(
     private apiService: ApiService,
@@ -502,6 +525,7 @@ export class DateRangesComponent implements OnInit {
   ngOnInit(): void {
     this.apiService.setCurrentStep(2);
     this.initializeDefaultDates();
+    this.loadDatasetDateRange();
   }
 
   private initializeDefaultDates(): void {
@@ -520,6 +544,18 @@ export class DateRangesComponent implements OnInit {
 
   private formatDate(date: Date): string {
     return date.toISOString().split('T')[0];
+  }
+
+  private loadDatasetDateRange(): void {
+    this.apiService.getDatasetDateRange().subscribe({
+      next: (range) => {
+        this.datasetDateRange = range;
+      },
+      error: (error) => {
+        console.error('Error loading dataset date range:', error);
+        // Don't show error to user, just log it
+      }
+    });
   }
 
   onDateChange(): void {

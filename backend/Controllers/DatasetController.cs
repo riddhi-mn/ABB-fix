@@ -57,4 +57,19 @@ public class DatasetController : ControllerBase
             return StatusCode(500, new DateRangeValidation { IsValid = false, Message = "Internal server error" });
         }
     }
+
+    [HttpGet("date-range")]
+    public async Task<ActionResult<object>> GetDatasetDateRange()
+    {
+        try
+        {
+            var (earliest, latest) = await _datasetService.GetDatasetDateRangeAsync();
+            return Ok(new { earliest = earliest.ToString("yyyy-MM-dd"), latest = latest.ToString("yyyy-MM-dd") });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting dataset date range");
+            return StatusCode(500, new { message = "Internal server error" });
+        }
+    }
 }

@@ -55,6 +55,10 @@ export class ApiService {
     return this.http.post<DateRangeValidation>(`${this.baseUrl}/dataset/validate-ranges`, request);
   }
 
+  getDatasetDateRange(): Observable<{ earliest: string; latest: string }> {
+    return this.http.get<{ earliest: string; latest: string }>(`${this.baseUrl}/dataset/date-range`);
+  }
+
   // Model endpoints
   trainModel(request: TrainingRequest): Observable<TrainingResponse> {
     return this.http.post<TrainingResponse>(`${this.baseUrl}/model/train`, request);

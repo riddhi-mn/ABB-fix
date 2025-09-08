@@ -560,10 +560,8 @@ export class SimulationComponent implements OnInit, OnDestroy {
   }
 
   getFeatureCount(prediction: SimulationData): number {
-    // Since we're using real production data with 900+ features,
-    // we'll show a representative count. In a real implementation,
-    // you might want to parse the additionalFeatures JSON to get exact count
-    return 892; // This matches the common features count from training
+    // Return the actual feature count from the ML service
+    return prediction.featureCount || 0;
   }
 
   getConfidencePercentage(confidence: number): number {
