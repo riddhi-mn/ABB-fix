@@ -54,7 +54,10 @@ public class DatasetService : IDatasetService
 
             int totalRecords = 0;
             int passCount = 0;
-            var additionalFeatures = new Dictionary<string, object>();
+            
+            // Log dataset structure for debugging
+            _logger.LogInformation($"Dataset headers: {string.Join(", ", headers)}");
+            _logger.LogInformation($"Total columns detected: {headers.Length}");
 
             while (await csv.ReadAsync())
             {
@@ -64,36 +67,40 @@ public class DatasetService : IDatasetService
                     Response = csv.GetField<int>("Response")
                 };
 
-                // Extract common sensor features if available
-                if (headers.Contains("Temperature"))
-                    record.Temperature = csv.GetField<double>("Temperature");
-                else
-                    record.Temperature = Random.Shared.NextDouble() * 50 + 20; // 20-70°C
-
-                if (headers.Contains("Pressure"))
-                    record.Pressure = csv.GetField<double>("Pressure");
-                else
-                    record.Pressure = Random.Shared.NextDouble() * 200 + 800; // 800-1000 hPa
-
-                if (headers.Contains("Humidity"))
-                    record.Humidity = csv.GetField<double>("Humidity");
-                else
-                    record.Humidity = Random.Shared.NextDouble() * 60 + 20; // 20-80%
-
-                // Store additional features as JSON
+                // Store ALL features as JSON (except Response and timestamp)
+                var allFeatures = new Dictionary<string, object>();
                 foreach (var header in headers)
                 {
-                    if (!new[] { "Response", "Temperature", "Pressure", "Humidity" }.Contains(header))
+                    if (header != "Response") // Skip only the Response column
                     {
                         var value = csv.GetField(header);
+                        
+                        // Try to parse as number first, then as string
                         if (double.TryParse(value, out var numValue))
-                            additionalFeatures[header] = numValue;
-                        else
-                            additionalFeatures[header] = value;
+                        {
+                            allFeatures[header] = numValue;
+                        }
+                        else if (value != null && value.Trim() != "")
+                        {
+                            allFeatures[header] = value;
+                        }
+                        // Skip null/empty values
                     }
                 }
 
-                record.AdditionalFeatures = JsonSerializer.Serialize(additionalFeatures);
+                // Log feature count for debugging
+                if (totalRecords == 0)
+                {
+                    _logger.LogInformation($"First record features: {allFeatures.Count} features stored");
+                    _logger.LogInformation($"Sample feature names: {string.Join(", ", allFeatures.Keys.Take(10))}");
+                }
+
+                record.AdditionalFeatures = JsonSerializer.Serialize(allFeatures);
+                
+                // Set default values for backward compatibility (these won't be used in training)
+                record.Temperature = 0; // Placeholder
+                record.Pressure = 0;    // Placeholder  
+                record.Humidity = 0;    // Placeholder
                 records.Add(record);
 
                 totalRecords++;
@@ -141,7 +148,7 @@ public class DatasetService : IDatasetService
     {
         try
         {   
-            // Check if dates are within dataset range
+            // Check if dataset exists
             var datasetRange = await _context.DatasetRecords
                 .Select(r => new { r.SyntheticTimestamp })
                 .OrderBy(r => r.SyntheticTimestamp)
@@ -159,6 +166,35 @@ public class DatasetService : IDatasetService
             var earliestDate = await _context.DatasetRecords.MinAsync(r => r.SyntheticTimestamp);
             var latestDate = await _context.DatasetRecords.MaxAsync(r => r.SyntheticTimestamp);
 
+            // 1. Basic date order validation (start <= end for each period)
+            if (request.TrainingStart > request.TrainingEnd)
+            {
+                return new DateRangeValidation
+                {
+                    IsValid = false,
+                    Message = "Training start date must be earlier than or equal to training end date."
+                };
+            }
+
+            if (request.TestingStart > request.TestingEnd)
+            {
+                return new DateRangeValidation
+                {
+                    IsValid = false,
+                    Message = "Testing start date must be earlier than or equal to testing end date."
+                };
+            }
+
+            if (request.SimulationStart > request.SimulationEnd)
+            {
+                return new DateRangeValidation
+                {
+                    IsValid = false,
+                    Message = "Simulation start date must be earlier than or equal to simulation end date."
+                };
+            }
+
+            // 2. Dataset range validation
             if (request.TrainingStart < earliestDate || request.SimulationEnd > latestDate)
             {
                 return new DateRangeValidation
@@ -168,7 +204,36 @@ public class DatasetService : IDatasetService
                 };
             }
 
-            // Count records in each period
+            // 3. Check if all periods are same day (skip sequential validation)
+            bool allSameDay = request.TrainingStart.Date == request.TrainingEnd.Date &&
+                             request.TestingStart.Date == request.TestingEnd.Date &&
+                             request.SimulationStart.Date == request.SimulationEnd.Date;
+
+            // 4. Sequential period validation (only if not all same day)
+            if (!allSameDay)
+            {
+                // Training must end before or on testing start date
+                if (request.TrainingEnd.Date > request.TestingStart.Date)
+                {
+                    return new DateRangeValidation
+                    {
+                        IsValid = false,
+                        Message = "Testing period must begin after the training period ends."
+                    };
+                }
+
+                // Testing must end before or on simulation start date
+                if (request.TestingEnd.Date > request.SimulationStart.Date)
+                {
+                    return new DateRangeValidation
+                    {
+                        IsValid = false,
+                        Message = "Simulation period must begin after the testing period ends."
+                    };
+                }
+            }
+
+            // 5. Count records in each period
             var trainingRecords = await _context.DatasetRecords
                 .CountAsync(r => r.SyntheticTimestamp >= request.TrainingStart && r.SyntheticTimestamp <= request.TrainingEnd);
 
@@ -223,5 +288,12 @@ public class DatasetService : IDatasetService
             AverageConfidence = 85.5, // This would come from actual predictions
             IsComplete = true
         };
+    }
+
+    public async Task<(DateTime earliest, DateTime latest)> GetDatasetDateRangeAsync()
+    {
+        var earliestDate = await _context.DatasetRecords.MinAsync(r => r.SyntheticTimestamp);
+        var latestDate = await _context.DatasetRecords.MaxAsync(r => r.SyntheticTimestamp);
+        return (earliestDate, latestDate);
     }
 }

@@ -55,6 +55,7 @@ export interface SimulationData {
   temperature: number;
   pressure: number;
   humidity: number;
+  featureCount: number;
 }
 
 export interface SimulationStats {

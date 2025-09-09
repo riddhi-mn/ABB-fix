@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace IntelliInspect.API.Models;
 
 public class DatasetMetadata
@@ -44,13 +46,28 @@ public class TrainingRequest
 
 public class TrainingResponse
 {
+    [JsonPropertyName("success")]
     public bool Success { get; set; }
+    
+    [JsonPropertyName("message")]
     public string Message { get; set; } = string.Empty;
+    
+    [JsonPropertyName("accuracy")]
     public double Accuracy { get; set; }
+    
+    [JsonPropertyName("precision")]
     public double Precision { get; set; }
+    
+    [JsonPropertyName("recall")]
     public double Recall { get; set; }
+    
+    [JsonPropertyName("f1Score")]
     public double F1Score { get; set; }
+    
+    [JsonPropertyName("confusionMatrix")]
     public string ConfusionMatrix { get; set; } = string.Empty;
+    
+    [JsonPropertyName("trainingChart")]
     public string TrainingChart { get; set; } = string.Empty;
 }
 
@@ -63,6 +80,7 @@ public class SimulationData
     public double Temperature { get; set; }
     public double Pressure { get; set; }
     public double Humidity { get; set; }
+    public int FeatureCount { get; set; }
 }
 
 public class SimulationStats
