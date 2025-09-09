@@ -225,23 +225,7 @@ import { NavigationComponent } from '../shared/navigation/navigation.component';
                 </div>
 
                 <!-- Timeline Visualization -->
-                <div class="timeline-section mt-4">
-                  <h6 class="mb-3">
-                    <i class="fas fa-timeline me-2"></i>
-                    Timeline Overview
-                  </h6>
-                  <div class="timeline-bar">
-                    <div class="timeline-segment training" [style.width.%]="getTimelineWidth('training')">
-                      <span class="timeline-label">Training</span>
-                    </div>
-                    <div class="timeline-segment testing" [style.width.%]="getTimelineWidth('testing')">
-                      <span class="timeline-label">Testing</span>
-                    </div>
-                    <div class="timeline-segment simulation" [style.width.%]="getTimelineWidth('simulation')">
-                      <span class="timeline-label">Simulation</span>
-                    </div>
-                  </div>
-                </div>
+                
 
                 <!-- Next Button -->
                 <div class="text-center mt-4">
